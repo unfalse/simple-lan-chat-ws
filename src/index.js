@@ -432,20 +432,7 @@ const app = await createApp({
       '[server] node client connected'
     );
   },
-  sendToBrowsersBinary(data) {
-    for (const socket of browserClients) {
-      if (socket.readyState === 1) {
-        socket.send(data);
-      }
-    }
-  },
-  sendToNodesBinary(data) {
-    for (const socket of nodeClients) {
-      if (socket.readyState === 1) {
-        socket.send(data);
-      }
-    }
-  },
+
 });
 
 /*

@@ -118,6 +118,22 @@ export async function createApp({
       }
     },
 
+    sendToBrowsersBinary(data) {
+      for (const socket of browserClients) {
+        if (socket.readyState === 1) {
+          socket.send(data);
+        }
+      }
+    },
+
+    sendToNodesBinary(data) {
+      for (const socket of nodeClients) {
+        if (socket.readyState === 1) {
+          socket.send(data);
+        }
+      }
+    },
+
     sendToNodes(message) {
       const data = JSON.stringify(message);
 
