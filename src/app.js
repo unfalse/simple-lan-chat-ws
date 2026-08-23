@@ -54,8 +54,12 @@ export async function createApp({
         '[app] browser connected'
       );
 
-      socket.on('message', (message) => {
-        onBrowserMessage(message);
+      socket.on('message', (message, isBinary) => {
+        onBrowserMessage(
+          message,
+          isBinary,
+          socket
+        );
       });
 
       socket.on('close', () => {
@@ -81,9 +85,10 @@ export async function createApp({
 
       onNodeConnect?.(socket);
 
-      socket.on('message', (message) => {
+      socket.on('message', (message, isBinary) => {
         onNodeMessage(
           message,
+          isBinary,
           socket
         );
       });
