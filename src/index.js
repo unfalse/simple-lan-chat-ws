@@ -7,6 +7,8 @@ const PORT = 3333;
 
 const discovery = new Discovery();
 
+const incomingFiles = new Map();
+
 let role = 'client';
 
 let currentServer = null;
@@ -25,7 +27,23 @@ function isLeader() {
  * --------------------------------------------------
  */
 
-function handleBrowserMessage(message) {
+function handleBrowserMessage(
+  message,
+  isBinary,
+  sourceSocket
+) {
+  /*
+   * Binary = данные файла.
+   */
+  if (isBinary) {
+    handleBrowserBinary(
+      message,
+      sourceSocket
+    );
+
+    return;
+  }
+
   let data;
 
   try {
@@ -36,15 +54,62 @@ function handleBrowserMessage(message) {
     return;
   }
 
-  if (data.type !== 'CHAT_MESSAGE') {
+  if (data.type === 'CHAT_MESSAGE') {
+    if (isLeader()) {
+      handleServerMessage(data);
+    } else {
+      sendToLeader(data);
+    }
+
     return;
   }
 
-  if (isLeader()) {
-    handleServerMessage(data);
-  } else {
-    sendToLeader(data);
+  if (data.type === 'FILE_START') {
+    if (isLeader()) {
+      handleFileStart(data);
+    } else {
+      sendToLeader(data);
+    }
   }
+}
+
+function handleFileStart(data) {
+  incomingFiles.set(data.fileId, {
+    ...data,
+    source: null
+  });
+
+  /*
+   * Передаём metadata всем клиентам.
+   */
+  broadcastToBrowsersAndNodes(data);
+}
+
+function broadcastToBrowsersAndNodes(
+  message
+) {
+  app.sendToBrowsers(message);
+
+  app.sendToNodes(message);
+}
+
+function handleBrowserBinary(
+  data
+) {
+  if (!isLeader()) {
+    if (
+      serverSocket?.readyState ===
+      WebSocket.OPEN
+    ) {
+      serverSocket.send(data);
+    }
+
+    return;
+  }
+
+  app.sendToNodesBinary(data);
+
+  app.sendToBrowsersBinary(data);
 }
 
 /*
@@ -72,31 +137,57 @@ function handleServerMessage(message) {
  * --------------------------------------------------
  */
 
-function handleNodeMessage(message, sourceSocket) {
+function handleNodeMessage(
+  message,
+  isBinary,
+  sourceSocket
+) {
+  /*
+   * Binary = файл.
+   */
+  if (isBinary) {
+    if (!isLeader()) {
+      return;
+    }
+
+    /*
+     * Отправляем всем Node-клиентам.
+     */
+    app.sendToNodesBinary(message);
+
+    /*
+     * Отправляем локальному браузеру.
+     */
+    app.sendToBrowsersBinary(message);
+
+    return;
+  }
+
   let data;
 
   try {
-    data = JSON.parse(message.toString());
-  } catch (error) {
-    console.log('[server] invalid node message');
+    data = JSON.parse(
+      message.toString()
+    );
+  } catch {
+    return;
+  }
+
+  if (data.type === 'CHAT_MESSAGE') {
+    if (isLeader()) {
+      app.sendToBrowsers(data);
+      app.sendToNodes(data);
+    }
 
     return;
   }
 
-  if (data.type !== 'CHAT_MESSAGE') {
-    return;
+  if (data.type === 'FILE_START') {
+    if (isLeader()) {
+      app.sendToBrowsers(data);
+      app.sendToNodes(data);
+    }
   }
-
-  /*
-   * 1. Показываем сообщение браузеру
-   *    на самом сервере.
-   */
-  app.sendToBrowsers(data);
-
-  /*
-   * 2. Отправляем сообщение всем Node-клиентам.
-   */
-  app.sendToNodes(data);
 }
 
 /*
@@ -139,32 +230,36 @@ function connectToServer(server) {
     );
   });
 
-  socket.on('message', (message) => {
-    console.log(
-      '[node] received from server:',
-      message.toString()
-    );
+  socket.on(
+    'message',
+    (message, isBinary) => {
+      if (isBinary) {
+        app.sendToBrowsersBinary(
+          message
+        );
 
-    let data;
+        return;
+      }
 
-    try {
-      data = JSON.parse(
-        message.toString()
-      );
-    } catch (error) {
-      console.log(
-        '[node] invalid server message'
-      );
+      let data;
 
-      return;
+      try {
+        data = JSON.parse(
+          message.toString()
+        );
+      } catch {
+        return;
+      }
+
+      if (data.type === 'CHAT_MESSAGE') {
+        app.sendToBrowsers(data);
+      }
+
+      if (data.type === 'FILE_START') {
+        app.sendToBrowsers(data);
+      }
     }
-
-    if (
-      data.type === 'CHAT_MESSAGE'
-    ) {
-      app.sendToBrowsers(data);
-    }
-  });
+  );
 
   socket.on('close', () => {
     if (serverSocket === socket) {
@@ -337,6 +432,7 @@ const app = await createApp({
       '[server] node client connected'
     );
   },
+
 });
 
 /*

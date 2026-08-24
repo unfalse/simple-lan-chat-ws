@@ -54,8 +54,12 @@ export async function createApp({
         '[app] browser connected'
       );
 
-      socket.on('message', (message) => {
-        onBrowserMessage(message);
+      socket.on('message', (message, isBinary) => {
+        onBrowserMessage(
+          message,
+          isBinary,
+          socket
+        );
       });
 
       socket.on('close', () => {
@@ -81,9 +85,10 @@ export async function createApp({
 
       onNodeConnect?.(socket);
 
-      socket.on('message', (message) => {
+      socket.on('message', (message, isBinary) => {
         onNodeMessage(
           message,
+          isBinary,
           socket
         );
       });
@@ -107,6 +112,22 @@ export async function createApp({
       const data = JSON.stringify(message);
 
       for (const socket of browserClients) {
+        if (socket.readyState === 1) {
+          socket.send(data);
+        }
+      }
+    },
+
+    sendToBrowsersBinary(data) {
+      for (const socket of browserClients) {
+        if (socket.readyState === 1) {
+          socket.send(data);
+        }
+      }
+    },
+
+    sendToNodesBinary(data) {
+      for (const socket of nodeClients) {
         if (socket.readyState === 1) {
           socket.send(data);
         }

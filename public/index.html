@@ -120,13 +120,19 @@
 
     <form id="form">
 
-      <input id="name" value="User" placeholder="Имя">
+      <form id="form">
 
-      <input id="text" placeholder="Сообщение..." autocomplete="off">
+        <input id="name" value="User" placeholder="Имя">
 
-      <button>
-        Send
-      </button>
+        <input id="text" placeholder="Сообщение..." autocomplete="off">
+
+        <input id="file" type="file">
+
+        <button>
+          Send
+        </button>
+
+      </form>
 
     </form>
 
@@ -174,26 +180,74 @@
       }
     );
 
+    const fileInput =
+      document.querySelector('#file');
+
     socket.addEventListener(
       'message',
-      (event) => {
-        const data =
-          JSON.parse(event.data);
+      async (event) => {
+        let data;
 
+        /*
+         * Сервер может прислать JSON
+         * или бинарные данные.
+         */
+        if (typeof event.data === 'string') {
+          try {
+            data = JSON.parse(event.data);
+          } catch {
+            return;
+          }
+
+          if (data.type === 'CHAT_MESSAGE') {
+            addMessage(
+              data.name,
+              data.text
+            );
+          }
+
+          if (data.type === 'FILE_START') {
+            window.currentFile = {
+              ...data,
+              chunks: []
+            };
+          }
+
+          return;
+        }
+
+        /*
+         * Получили бинарную часть файла.
+         */
         if (
-          data.type === 'CHAT_MESSAGE'
+          event.data instanceof Blob &&
+          window.currentFile
         ) {
-          addMessage(
-            data.name,
-            data.text
+          const file = window.currentFile;
+
+          const blob = new Blob(
+            [
+              ...file.chunks,
+              event.data
+            ],
+            {
+              type: file.mimeType
+            }
           );
+
+          addFileMessage(
+            file.name,
+            blob
+          );
+
+          window.currentFile = null;
         }
       }
     );
 
     form.addEventListener(
       'submit',
-      (event) => {
+      async (event) => {
         event.preventDefault();
 
         const name =
@@ -202,21 +256,56 @@
         const text =
           textInput.value.trim();
 
-        if (!name || !text) {
+        const file =
+          fileInput.files[0];
+
+        if (!name) {
           return;
         }
 
-        socket.send(
-          JSON.stringify({
-            type:
-              'CHAT_MESSAGE',
+        /*
+         * Обычное сообщение.
+         */
+        if (text) {
+          socket.send(
+            JSON.stringify({
+              type: 'CHAT_MESSAGE',
+              name,
+              text
+            })
+          );
 
-            name,
-            text,
-          })
-        );
+          textInput.value = '';
+        }
 
-        textInput.value = '';
+        /*
+         * Файл.
+         */
+        if (file) {
+          /*
+           * Сначала отправляем metadata.
+           */
+          socket.send(
+            JSON.stringify({
+              type: 'FILE_START',
+              name,
+              fileId: crypto.randomUUID(),
+              fileName: file.name,
+              mimeType: file.type ||
+                'application/octet-stream',
+              size: file.size
+            })
+          );
+
+          /*
+           * Затем сам файл.
+           */
+          socket.send(
+            await file.arrayBuffer()
+          );
+
+          fileInput.value = '';
+        }
 
         textInput.focus();
       }
@@ -255,6 +344,39 @@
       messages.appendChild(
         element
       );
+
+      messages.scrollTop =
+        messages.scrollHeight;
+    }
+
+    function addFileMessage(
+      fileName,
+      blob
+    ) {
+      const element =
+        document.createElement('div');
+
+      element.className =
+        'message';
+
+      const link =
+        document.createElement('a');
+
+      link.href =
+        URL.createObjectURL(blob);
+
+      link.download =
+        fileName;
+
+      link.textContent =
+        `📎 ${fileName}`;
+
+      link.style.color =
+        '#61dafb';
+
+      element.appendChild(link);
+
+      messages.appendChild(element);
 
       messages.scrollTop =
         messages.scrollHeight;
