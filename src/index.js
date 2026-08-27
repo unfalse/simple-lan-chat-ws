@@ -27,19 +27,12 @@ function isLeader() {
  * --------------------------------------------------
  */
 
-function handleBrowserMessage(
-  message,
-  isBinary,
-  sourceSocket
-) {
+function handleBrowserMessage(message, isBinary, sourceSocket) {
   /*
    * Binary = данные файла.
    */
   if (isBinary) {
-    handleBrowserBinary(
-      message,
-      sourceSocket
-    );
+    handleBrowserBinary(message, sourceSocket);
 
     return;
   }
@@ -47,9 +40,7 @@ function handleBrowserMessage(
   let data;
 
   try {
-    data = JSON.parse(
-      message.toString()
-    );
+    data = JSON.parse(message.toString());
   } catch {
     return;
   }
@@ -70,13 +61,23 @@ function handleBrowserMessage(
     } else {
       sendToLeader(data);
     }
+
+    return;
+  }
+
+  if (data.type === 'FILE_END') {
+    if (isLeader()) {
+      handleFileEnd(data);
+    } else {
+      sendToLeader(data);
+    }
   }
 }
 
 function handleFileStart(data) {
   incomingFiles.set(data.fileId, {
     ...data,
-    source: null
+    source: null,
   });
 
   /*
@@ -85,31 +86,33 @@ function handleFileStart(data) {
   broadcastToBrowsersAndNodes(data);
 }
 
-function broadcastToBrowsersAndNodes(
-  message
-) {
+function handleFileEnd(data) {
+  incomingFiles.delete(data.fileId);
+
+  /*
+   * Передаём завершение всем клиентам.
+   */
+  broadcastToBrowsersAndNodes(data);
+}
+
+function broadcastToBrowsersAndNodes(message) {
   app.sendToBrowsers(message);
 
   app.sendToNodes(message);
 }
 
-function handleBrowserBinary(
-  data
-) {
+function handleBrowserBinary(data) {
   if (!isLeader()) {
-    if (
-      serverSocket?.readyState ===
-      WebSocket.OPEN
-    ) {
+    if (serverSocket?.readyState === WebSocket.OPEN) {
       serverSocket.send(data);
     }
 
     return;
   }
 
-  app.sendToNodesBinary(data);
-
   app.sendToBrowsersBinary(data);
+
+  app.sendToNodesBinary(data);
 }
 
 /*
@@ -137,11 +140,7 @@ function handleServerMessage(message) {
  * --------------------------------------------------
  */
 
-function handleNodeMessage(
-  message,
-  isBinary,
-  sourceSocket
-) {
+function handleNodeMessage(message, isBinary) {
   /*
    * Binary = файл.
    */
@@ -151,14 +150,13 @@ function handleNodeMessage(
     }
 
     /*
-     * Отправляем всем Node-клиентам.
-     */
-    app.sendToNodesBinary(message);
-
-    /*
-     * Отправляем локальному браузеру.
+     * Передаём chunk:
+     *
+     * SERVER → browsers
+     * SERVER → clients
      */
     app.sendToBrowsersBinary(message);
+    app.sendToNodesBinary(message);
 
     return;
   }
@@ -166,9 +164,7 @@ function handleNodeMessage(
   let data;
 
   try {
-    data = JSON.parse(
-      message.toString()
-    );
+    data = JSON.parse(message.toString());
   } catch {
     return;
   }
@@ -182,7 +178,7 @@ function handleNodeMessage(
     return;
   }
 
-  if (data.type === 'FILE_START') {
+  if (data.type === 'FILE_START' || data.type === 'FILE_END') {
     if (isLeader()) {
       app.sendToBrowsers(data);
       app.sendToNodes(data);
@@ -201,65 +197,49 @@ function connectToServer(server) {
     return;
   }
 
-  if (
-    currentServer?.id === server.id &&
-    serverSocket
-  ) {
+  if (currentServer?.id === server.id && serverSocket) {
     return;
   }
 
   serverSocket?.close();
-
   currentServer = server;
+  const url = `ws://${server.host}:${server.port}/node`;
+  console.log(`[node] connecting to ${url}`);
 
-  const url =
-    `ws://${server.host}:${server.port}/node`;
-
-  console.log(
-    `[node] connecting to ${url}`
-  );
-
-  const socket =
-    new WebSocket(url);
-
+  const socket = new WebSocket(url);
   serverSocket = socket;
 
   socket.on('open', () => {
-    console.log(
-      `[node] connected to ${server.id}`
-    );
+    console.log(`[node] connected to ${server.id}`);
   });
 
-  socket.on(
-    'message',
-    (message, isBinary) => {
-      if (isBinary) {
-        app.sendToBrowsersBinary(
-          message
-        );
+  socket.on('message', (message, isBinary) => {
+    if (isBinary) {
+      app.sendToBrowsersBinary(message);
 
-        return;
-      }
-
-      let data;
-
-      try {
-        data = JSON.parse(
-          message.toString()
-        );
-      } catch {
-        return;
-      }
-
-      if (data.type === 'CHAT_MESSAGE') {
-        app.sendToBrowsers(data);
-      }
-
-      if (data.type === 'FILE_START') {
-        app.sendToBrowsers(data);
-      }
+      return;
     }
-  );
+
+    let data;
+
+    try {
+      data = JSON.parse(message.toString());
+    } catch {
+      return;
+    }
+
+    if (data.type === 'CHAT_MESSAGE') {
+      app.sendToBrowsers(data);
+    }
+
+    if (data.type === 'FILE_START') {
+      app.sendToBrowsers(data);
+    }
+
+    if (data.type === 'FILE_END') {
+      app.sendToBrowsers(data);
+    }
+  });
 
   socket.on('close', () => {
     if (serverSocket === socket) {
@@ -267,14 +247,12 @@ function connectToServer(server) {
       currentServer = null;
     }
 
-    console.log(
-      '[node] leader connection closed'
-    );
+    console.log('[node] leader connection closed');
 
     scheduleElection();
   });
 
-  socket.on('error', () => { });
+  socket.on('error', () => {});
 }
 
 /*
@@ -284,13 +262,8 @@ function connectToServer(server) {
  */
 
 function sendToLeader(message) {
-  if (
-    serverSocket?.readyState ===
-    WebSocket.OPEN
-  ) {
-    serverSocket.send(
-      JSON.stringify(message)
-    );
+  if (serverSocket?.readyState === WebSocket.OPEN) {
+    serverSocket.send(JSON.stringify(message));
   }
 }
 
@@ -306,18 +279,14 @@ function handleServerChange(server) {
   }
 
   if (!server) {
-    console.log(
-      '[discovery] no server found'
-    );
+    console.log('[discovery] no server found');
 
     scheduleElection();
 
     return;
   }
 
-  if (
-    currentServer?.id !== server.id
-  ) {
+  if (currentServer?.id !== server.id) {
     connectToServer(server);
   }
 }
@@ -333,12 +302,9 @@ function scheduleElection() {
     return;
   }
 
-  const delay =
-    1000 + Math.random() * 2000;
+  const delay = 1000 + Math.random() * 2000;
 
-  console.log(
-    `[election] waiting ${Math.round(delay)}ms`
-  );
+  console.log(`[election] waiting ${Math.round(delay)}ms`);
 
   electionTimer = setTimeout(() => {
     electionTimer = null;
@@ -352,8 +318,7 @@ function runElection() {
     return;
   }
 
-  const server =
-    discovery.getBestServer();
+  const server = discovery.getBestServer();
 
   if (server) {
     connectToServer(server);
@@ -378,8 +343,7 @@ function becomeLeader() {
   /*
    * Последняя проверка.
    */
-  const server =
-    discovery.getBestServer();
+  const server = discovery.getBestServer();
 
   if (server) {
     connectToServer(server);
@@ -387,9 +351,7 @@ function becomeLeader() {
     return;
   }
 
-  console.log(
-    '[election] becoming leader'
-  );
+  console.log('[election] becoming leader');
 
   role = 'server';
 
@@ -402,14 +364,9 @@ function becomeLeader() {
    * Теперь начинаем рекламировать
    * себя в LAN.
    */
-  stopAnnouncing =
-    discovery.startAnnouncing(
-      PORT
-    );
+  stopAnnouncing = discovery.startAnnouncing(PORT);
 
-  console.log(
-    '[server] I am the leader'
-  );
+  console.log('[server] I am the leader');
 }
 
 /*
@@ -421,18 +378,13 @@ function becomeLeader() {
 const app = await createApp({
   port: PORT,
 
-  onBrowserMessage:
-    handleBrowserMessage,
+  onBrowserMessage: handleBrowserMessage,
 
-  onNodeMessage:
-    handleNodeMessage,
+  onNodeMessage: handleNodeMessage,
 
   onNodeConnect(socket) {
-    console.log(
-      '[server] node client connected'
-    );
+    console.log('[server] node client connected');
   },
-
 });
 
 /*
@@ -441,9 +393,7 @@ const app = await createApp({
  * --------------------------------------------------
  */
 
-discovery.onChange(
-  handleServerChange
-);
+discovery.onChange(handleServerChange);
 
 discovery.start();
 
@@ -459,9 +409,7 @@ scheduleElection();
  */
 
 process.on('SIGINT', async () => {
-  console.log(
-    '\nShutting down...'
-  );
+  console.log('\nShutting down...');
 
   stopAnnouncing?.();
 

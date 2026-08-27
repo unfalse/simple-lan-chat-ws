@@ -30,9 +30,7 @@ export class Discovery {
     this.socket.bind(DISCOVERY_PORT, () => {
       this.socket.setBroadcast(true);
 
-      console.log(
-        `[discovery] listening on UDP ${DISCOVERY_PORT}`
-      );
+      console.log(`[discovery] listening on UDP ${DISCOVERY_PORT}`);
 
       this.startCleanup();
     });
@@ -69,9 +67,7 @@ export class Discovery {
     this.servers.set(server.id, server);
 
     if (isNewServer) {
-      console.log(
-        `[discovery] found server ${server.id} at ${server.host}:${server.port}`
-      );
+      console.log(`[discovery] found server ${server.id} at ${server.host}:${server.port}`);
     }
 
     this.emitChange();
@@ -85,9 +81,7 @@ export class Discovery {
         if (now - server.lastSeen > SERVER_TIMEOUT) {
           this.servers.delete(id);
 
-          console.log(
-            `[discovery] server ${id} disappeared`
-          );
+          console.log(`[discovery] server ${id} disappeared`);
         }
       }
 
@@ -149,26 +143,17 @@ export class Discovery {
           id: this.nodeId,
           startedAt: this.startedAt,
           port,
-        })
+        }),
       );
 
       for (const address of this.getBroadcastAddresses()) {
-        this.socket.send(
-          message,
-          0,
-          message.length,
-          DISCOVERY_PORT,
-          address
-        );
+        this.socket.send(message, 0, message.length, DISCOVERY_PORT, address);
       }
     };
 
     announce();
 
-    const timer = setInterval(
-      announce,
-      ANNOUNCE_INTERVAL
-    );
+    const timer = setInterval(announce, ANNOUNCE_INTERVAL);
 
     return () => {
       clearInterval(timer);
@@ -182,25 +167,15 @@ export class Discovery {
 
     for (const networkInterface of Object.values(interfaces)) {
       for (const address of networkInterface ?? []) {
-        if (
-          address.family !== 'IPv4' ||
-          address.internal
-        ) {
+        if (address.family !== 'IPv4' || address.internal) {
           continue;
         }
 
-        const ip = address.address
-          .split('.')
-          .map(Number);
+        const ip = address.address.split('.').map(Number);
 
-        const mask = address.netmask
-          .split('.')
-          .map(Number);
+        const mask = address.netmask.split('.').map(Number);
 
-        const broadcast = ip.map(
-          (part, index) =>
-            part | (~mask[index] & 255)
-        );
+        const broadcast = ip.map((part, index) => part | (~mask[index] & 255));
 
         result.push(broadcast.join('.'));
       }

@@ -1,263 +1,262 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LAN Chat</title>
 
-  <title>LAN Chat</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+      body {
+        margin: 0;
 
-    body {
-      margin: 0;
+        background: #181818;
+        color: #fff;
 
-      background: #181818;
-      color: #fff;
+        font-family: Arial, sans-serif;
+      }
 
-      font-family: Arial, sans-serif;
-    }
+      .chat {
+        height: 100vh;
+        max-width: 700px;
 
-    .chat {
-      height: 100vh;
-      max-width: 700px;
+        margin: 0 auto;
 
-      margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+      }
 
-      display: flex;
-      flex-direction: column;
-    }
+      header {
+        padding: 16px 20px;
 
-    header {
-      padding: 16px 20px;
+        border-bottom: 1px solid #333;
 
-      border-bottom:
-        1px solid #333;
+        font-size: 20px;
+        font-weight: bold;
+      }
 
-      font-size: 20px;
-      font-weight: bold;
-    }
+      #status {
+        font-size: 13px;
+        color: #888;
 
-    #status {
-      font-size: 13px;
-      color: #888;
+        margin-top: 5px;
+      }
 
-      margin-top: 5px;
-    }
+      #messages {
+        flex: 1;
 
-    #messages {
-      flex: 1;
+        overflow-y: auto;
 
-      overflow-y: auto;
+        padding: 20px;
+      }
 
-      padding: 20px;
-    }
+      .message {
+        margin-bottom: 10px;
+      }
 
-    .message {
-      margin-bottom: 10px;
-    }
+      .name {
+        color: #61dafb;
+        font-weight: bold;
+      }
 
-    .name {
-      color: #61dafb;
-      font-weight: bold;
-    }
+      form {
+        display: flex;
+        gap: 8px;
 
-    form {
-      display: flex;
-      gap: 8px;
+        padding: 12px;
 
-      padding: 12px;
+        border-top: 1px solid #333;
+      }
 
-      border-top:
-        1px solid #333;
-    }
+      input {
+        border: 1px solid #444;
+        border-radius: 6px;
 
-    input {
-      border: 1px solid #444;
-      border-radius: 6px;
+        background: #222;
+        color: white;
 
-      background: #222;
-      color: white;
+        padding: 11px;
+      }
 
-      padding: 11px;
-    }
+      #name {
+        width: 120px;
+      }
 
-    #name {
-      width: 120px;
-    }
+      #text {
+        flex: 1;
+      }
 
-    #text {
-      flex: 1;
-    }
+      button {
+        border: 0;
+        border-radius: 6px;
 
-    button {
-      border: 0;
-      border-radius: 6px;
+        padding: 0 20px;
 
-      padding: 0 20px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
 
-      cursor: pointer;
-    }
-  </style>
-</head>
+  <body>
+    <div class="chat">
+      <header>
+        💬 LAN Chat
 
-<body>
+        <div id="status">Connecting...</div>
+      </header>
 
-  <div class="chat">
-
-    <header>
-      💬 LAN Chat
-
-      <div id="status">
-        Connecting...
-      </div>
-    </header>
-
-    <div id="messages"></div>
-
-    <form id="form">
+      <div id="messages"></div>
 
       <form id="form">
+        <form id="form">
+          <input id="name" value="User" placeholder="Имя" />
 
-        <input id="name" value="User" placeholder="Имя">
+          <input id="text" placeholder="Сообщение..." autocomplete="off" />
 
-        <input id="text" placeholder="Сообщение..." autocomplete="off">
+          <input id="file" type="file" />
 
-        <input id="file" type="file">
-
-        <button>
-          Send
-        </button>
-
+          <button>Send</button>
+        </form>
       </form>
+    </div>
 
-    </form>
+    <script>
+      const messages = document.querySelector('#messages');
 
-  </div>
+      const status = document.querySelector('#status');
 
-  <script>
-    const messages =
-      document.querySelector('#messages');
+      const form = document.querySelector('#form');
 
-    const status =
-      document.querySelector('#status');
+      const nameInput = document.querySelector('#name');
 
-    const form =
-      document.querySelector('#form');
+      const textInput = document.querySelector('#text');
 
-    const nameInput =
-      document.querySelector('#name');
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 
-    const textInput =
-      document.querySelector('#text');
+      const socket = new WebSocket(`${protocol}//${location.host}/browser`);
 
-    const protocol =
-      location.protocol === 'https:'
-        ? 'wss:'
-        : 'ws:';
+      /*
+       * Без этого event.data для бинарных
+       * сообщений — Blob, и его пришлось бы
+       * конвертировать асинхронно, что может
+       * привести к обработке FILE_END раньше,
+       * чем последний chunk.
+       */
+      socket.binaryType = 'arraybuffer';
 
-    const socket =
-      new WebSocket(
-        `${protocol}//${location.host}/browser`
-      );
+      const CHUNK_SIZE = 64 * 1024;
 
-    socket.addEventListener(
-      'open',
-      () => {
-        status.textContent =
-          'Connected';
-      }
-    );
+      const incomingFiles = new Map();
 
-    socket.addEventListener(
-      'close',
-      () => {
-        status.textContent =
-          'Disconnected';
-      }
-    );
+      socket.addEventListener('open', () => {
+        status.textContent = 'Connected';
+      });
 
-    const fileInput =
-      document.querySelector('#file');
+      socket.addEventListener('close', () => {
+        status.textContent = 'Disconnected';
+      });
 
-    socket.addEventListener(
-      'message',
-      async (event) => {
-        let data;
+      const fileInput = document.querySelector('#file');
 
+      socket.addEventListener('message', (event) => {
         /*
-         * Сервер может прислать JSON
-         * или бинарные данные.
+         * JSON
          */
         if (typeof event.data === 'string') {
-          try {
-            data = JSON.parse(event.data);
-          } catch {
-            return;
-          }
+          const data = JSON.parse(event.data);
 
           if (data.type === 'CHAT_MESSAGE') {
-            addMessage(
-              data.name,
-              data.text
-            );
+            addMessage(data.name, data.text);
           }
 
           if (data.type === 'FILE_START') {
-            window.currentFile = {
+            incomingFiles.set(data.fileId, {
               ...data,
-              chunks: []
-            };
+              chunks: new Array(data.totalChunks),
+              receivedChunks: 0,
+            });
+
+            console.log(`Receiving ${data.fileName}`);
+          }
+
+          if (data.type === 'FILE_END') {
+            finishFile(data.fileId);
           }
 
           return;
         }
 
         /*
-         * Получили бинарную часть файла.
+         * Binary chunk
          */
-        if (
-          event.data instanceof Blob &&
-          window.currentFile
-        ) {
-          const file = window.currentFile;
-
-          const blob = new Blob(
-            [
-              ...file.chunks,
-              event.data
-            ],
-            {
-              type: file.mimeType
-            }
-          );
-
-          addFileMessage(
-            file.name,
-            blob
-          );
-
-          window.currentFile = null;
+        if (event.data instanceof ArrayBuffer) {
+          handleFileChunk(event.data);
         }
-      }
-    );
+      });
 
-    form.addEventListener(
-      'submit',
-      async (event) => {
+      function handleFileChunk(buffer) {
+        const bytes = new Uint8Array(buffer);
+
+        /*
+         * Первые 16 байт — UUID.
+         */
+        const fileId = bytesToUuid(bytes.slice(0, 16));
+
+        /*
+         * Следующие 4 байта —
+         * номер chunk.
+         */
+        const view = new DataView(buffer);
+        const chunkIndex = view.getUint32(16);
+
+        /*
+         * Остальное — данные файла.
+         */
+        const chunk = bytes.slice(20);
+        const file = incomingFiles.get(fileId);
+        if (!file) {
+          console.error('Unknown file:', fileId);
+          return;
+        }
+
+        file.chunks[chunkIndex] = chunk;
+        file.receivedChunks++;
+
+        const progress = Math.round((file.receivedChunks / file.totalChunks) * 100);
+        console.log(`Downloading ${file.fileName}: ${progress}%`);
+      }
+
+      function finishFile(fileId) {
+        const file = incomingFiles.get(fileId);
+
+        if (!file) {
+          return;
+        }
+
+        if (file.receivedChunks !== file.totalChunks) {
+          console.error('File incomplete:', file.fileName);
+          return;
+        }
+
+        const blob = new Blob(file.chunks, { type: file.mimeType });
+
+        addFileMessage(file.name, file.fileName, blob);
+
+        incomingFiles.delete(fileId);
+      }
+
+      form.addEventListener('submit', async (event) => {
         event.preventDefault();
 
-        const name =
-          nameInput.value.trim();
+        const name = nameInput.value.trim();
 
-        const text =
-          textInput.value.trim();
+        const text = textInput.value.trim();
 
-        const file =
-          fileInput.files[0];
+        const file = fileInput.files[0];
 
         if (!name) {
           return;
@@ -271,8 +270,8 @@
             JSON.stringify({
               type: 'CHAT_MESSAGE',
               name,
-              text
-            })
+              text,
+            }),
           );
 
           textInput.value = '';
@@ -282,107 +281,176 @@
          * Файл.
          */
         if (file) {
-          /*
-           * Сначала отправляем metadata.
-           */
-          socket.send(
-            JSON.stringify({
-              type: 'FILE_START',
-              name,
-              fileId: crypto.randomUUID(),
-              fileName: file.name,
-              mimeType: file.type ||
-                'application/octet-stream',
-              size: file.size
-            })
-          );
-
-          /*
-           * Затем сам файл.
-           */
-          socket.send(
-            await file.arrayBuffer()
-          );
+          await sendFile(file, name);
 
           fileInput.value = '';
         }
 
         textInput.focus();
+      });
+
+      function uuidToBytes(uuid) {
+        return new Uint8Array(
+          uuid
+            .replaceAll('-', '')
+            .match(/.{2}/g)
+            .map((byte) => parseInt(byte, 16)),
+        );
       }
-    );
 
-    function addMessage(
-      name,
-      text
-    ) {
-      const element =
-        document.createElement('div');
+      function bytesToUuid(bytes) {
+        const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 
-      element.className =
-        'message';
+        return [
+          hex.slice(0, 8),
+          hex.slice(8, 12),
+          hex.slice(12, 16),
+          hex.slice(16, 20),
+          hex.slice(20),
+        ].join('-');
+      }
 
-      const nameElement =
-        document.createElement('span');
+      function waitForSocketDrain() {
+        return new Promise((resolve) => {
+          const timer = setInterval(() => {
+            if (socket.bufferedAmount <= CHUNK_SIZE) {
+              clearInterval(timer);
+              resolve();
+            }
+          }, 10);
+        });
+      }
 
-      nameElement.className =
-        'name';
+      function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+          const random = (Math.random() * 16) | 0;
+          const value = char === 'x' ? random : (random & 0x3) | 0x8;
 
-      nameElement.textContent =
-        `${name}: `;
+          return value.toString(16);
+        });
+      }
 
-      const textElement =
-        document.createElement('span');
+      async function sendFile(file, name) {
+        const fileId = generateUUID();
 
-      textElement.textContent =
-        text;
+        /*
+         * UUID переводим в 16 байт.
+         */
+        const fileIdBytes = uuidToBytes(fileId);
 
-      element.append(
-        nameElement,
-        textElement
-      );
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-      messages.appendChild(
-        element
-      );
+        /*
+         * FILE_START
+         */
+        socket.send(
+          JSON.stringify({
+            type: 'FILE_START',
 
-      messages.scrollTop =
-        messages.scrollHeight;
-    }
+            fileId,
 
-    function addFileMessage(
-      fileName,
-      blob
-    ) {
-      const element =
-        document.createElement('div');
+            name,
 
-      element.className =
-        'message';
+            fileName: file.name,
 
-      const link =
-        document.createElement('a');
+            mimeType: file.type || 'application/octet-stream',
 
-      link.href =
-        URL.createObjectURL(blob);
+            size: file.size,
 
-      link.download =
-        fileName;
+            totalChunks,
+          }),
+        );
 
-      link.textContent =
-        `📎 ${fileName}`;
+        /*
+         * Отправляем chunks.
+         */
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+          const start = chunkIndex * CHUNK_SIZE;
 
-      link.style.color =
-        '#61dafb';
+          const end = Math.min(start + CHUNK_SIZE, file.size);
 
-      element.appendChild(link);
+          const chunk = await file.slice(start, end).arrayBuffer();
 
-      messages.appendChild(element);
+          const packet = new Uint8Array(20 + chunk.byteLength);
 
-      messages.scrollTop =
-        messages.scrollHeight;
-    }
-  </script>
+          /*
+           * первые 16 байт = UUID
+           */
+          packet.set(fileIdBytes, 0);
 
-</body>
+          /*
+           * следующие 4 байта = chunkIndex
+           */
+          const view = new DataView(packet.buffer);
 
+          view.setUint32(16, chunkIndex);
+
+          /*
+           * сам файл
+           */
+          packet.set(new Uint8Array(chunk), 20);
+
+          socket.send(packet);
+
+          /*
+           * Небольшая информация
+           * о прогрессе.
+           */
+          const progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+
+          console.log(`Uploading ${progress}%`);
+
+          /*
+           * Не забиваем WebSocket огромным
+           * количеством frames.
+           */
+          if (socket.bufferedAmount > CHUNK_SIZE * 4) {
+            await waitForSocketDrain();
+          }
+        }
+
+        /*
+         * FILE_END
+         */
+        socket.send(
+          JSON.stringify({
+            type: 'FILE_END',
+
+            fileId,
+          }),
+        );
+      }
+
+      function addMessage(name, text) {
+        const element = document.createElement('div');
+        element.className = 'message';
+
+        const nameElement = document.createElement('span');
+        nameElement.className = 'name';
+        nameElement.textContent = `${name}: `;
+
+        const textElement = document.createElement('span');
+        textElement.textContent = text;
+
+        element.append(nameElement, textElement);
+        messages.appendChild(element);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function addFileMessage(sender, fileName, blob) {
+        const element = document.createElement('div');
+        element.className = 'message';
+
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        link.textContent = `📎 ${sender}: ${fileName}`;
+        link.style.color = '#61dafb';
+
+        element.appendChild(link);
+        messages.appendChild(element);
+        messages.scrollTop = messages.scrollHeight;
+      }
+    </script>
+  </body>
 </html>
