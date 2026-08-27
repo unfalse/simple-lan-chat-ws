@@ -1,0 +1,8 @@
+{
+  "appId": "com.lanchat.app",
+  "appName": "LAN Chat",
+  "webDir": "public",
+  "server": {
+    "cleartext": true
+  }
+}
