@@ -15,5 +15,8 @@
     "@fastify/websocket": "^11.3.0",
     "fastify": "^5.12.1",
     "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6"
   }
 }

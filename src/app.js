@@ -1,19 +1,14 @@
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
-
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export async function createApp({
-  port,
-  onBrowserMessage,
-  onNodeMessage,
-  onNodeConnect,
-}) {
+export async function createApp({ port, onBrowserMessage, onNodeMessage, onNodeConnect }) {
   const app = Fastify({
     logger: false,
   });
@@ -21,10 +16,7 @@ export async function createApp({
   await app.register(websocket);
 
   await app.register(fastifyStatic, {
-    root: path.join(
-      __dirname,
-      '../public'
-    ),
+    root: path.join(__dirname, '../public'),
   });
 
   const browserClients = new Set();
@@ -34,9 +26,7 @@ export async function createApp({
    * Browser -> HTTP
    */
   app.get('/', async (_, reply) => {
-    return reply.sendFile(
-      'index.html'
-    );
+    return reply.sendFile('index.html');
   });
 
   /*
@@ -50,22 +40,16 @@ export async function createApp({
     (socket) => {
       browserClients.add(socket);
 
-      console.log(
-        '[app] browser connected'
-      );
+      console.log('[app] browser connected');
 
       socket.on('message', (message, isBinary) => {
-        onBrowserMessage(
-          message,
-          isBinary,
-          socket
-        );
+        onBrowserMessage(message, isBinary, socket);
       });
 
       socket.on('close', () => {
         browserClients.delete(socket);
       });
-    }
+    },
   );
 
   /*
@@ -79,25 +63,33 @@ export async function createApp({
     (socket) => {
       nodeClients.add(socket);
 
-      console.log(
-        '[app] node connected'
-      );
+      console.log('[app] node connected');
 
       onNodeConnect?.(socket);
 
       socket.on('message', (message, isBinary) => {
-        onNodeMessage(
-          message,
-          isBinary,
-          socket
-        );
+        onNodeMessage(message, isBinary, socket);
       });
 
       socket.on('close', () => {
         nodeClients.delete(socket);
       });
-    }
+    },
   );
+
+  function getLocalIp() {
+    const interfaces = os.networkInterfaces();
+
+    for (const entries of Object.values(interfaces)) {
+      for (const entry of entries ?? []) {
+        if (entry.family === 'IPv4' && !entry.internal) {
+          return entry.address;
+        }
+      }
+    }
+
+    return 'localhost';
+  }
 
   /*
    * Запускаем HTTP.
@@ -106,6 +98,9 @@ export async function createApp({
     host: '0.0.0.0',
     port,
   });
+
+  const ip = getLocalIp();
+  console.log(`Chat: http://${ip}:${port}`);
 
   return {
     sendToBrowsers(message) {
