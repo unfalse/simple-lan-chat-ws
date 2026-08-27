@@ -275,6 +275,16 @@ function sendToLeader(message) {
 
 function handleServerChange(server) {
   if (isLeader()) {
+    /*
+     * Мы уже стали лидером, но, возможно,
+     * объявление конкурента просто пришло
+     * с опозданием (split-brain). Если он
+     * по факту приоритетнее нас — уступаем.
+     */
+    if (server && shouldStepDownFor(server)) {
+      stepDown(server);
+    }
+
     return;
   }
 
@@ -289,6 +299,25 @@ function handleServerChange(server) {
   if (currentServer?.id !== server.id) {
     connectToServer(server);
   }
+}
+
+function shouldStepDownFor(server) {
+  if (server.startedAt !== discovery.startedAt) {
+    return server.startedAt < discovery.startedAt;
+  }
+
+  return server.id.localeCompare(discovery.nodeId) < 0;
+}
+
+function stepDown(server) {
+  console.log(`[election] stepping down, ${server.id} is the real leader`);
+
+  stopAnnouncing?.();
+  stopAnnouncing = null;
+
+  role = 'client';
+
+  connectToServer(server);
 }
 
 /*
