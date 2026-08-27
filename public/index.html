@@ -63,6 +63,32 @@
         font-weight: bold;
       }
 
+      .progress-label {
+        font-size: 13px;
+        color: #ccc;
+
+        margin-bottom: 4px;
+      }
+
+      .progress-track {
+        width: 220px;
+        height: 6px;
+
+        background: #333;
+        border-radius: 3px;
+
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        width: 0%;
+        height: 100%;
+
+        background: #61dafb;
+
+        transition: width 0.1s linear;
+      }
+
       form {
         display: flex;
         gap: 8px;
@@ -151,6 +177,12 @@
       const CHUNK_SIZE = 64 * 1024;
 
       const incomingFiles = new Map();
+
+      /*
+       * fileId -> элементы прогресс-бара
+       * файлов, которые отправляем сами.
+       */
+      const sendingFiles = new Map();
 
       socket.addEventListener('open', () => {
         status.textContent = 'Connected';
@@ -244,7 +276,14 @@
 
         const blob = new Blob(file.chunks, { type: file.mimeType });
 
-        addFileMessage(file.name, file.fileName, blob);
+        const sending = sendingFiles.get(fileId);
+
+        if (sending) {
+          finishFileProgress(sending, file.fileName, blob);
+          sendingFiles.delete(fileId);
+        } else {
+          addFileMessage(file.name, file.fileName, blob);
+        }
 
         incomingFiles.delete(fileId);
       }
@@ -340,6 +379,8 @@
 
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
+        const progressElement = addFileProgressMessage(name, file.name, fileId);
+
         /*
          * FILE_START
          */
@@ -400,6 +441,8 @@
 
           console.log(`Uploading ${progress}%`);
 
+          updateFileProgress(progressElement, progress);
+
           /*
            * Не забиваем WebSocket огромным
            * количеством frames.
@@ -450,6 +493,47 @@
         element.appendChild(link);
         messages.appendChild(element);
         messages.scrollTop = messages.scrollHeight;
+      }
+
+      function addFileProgressMessage(sender, fileName, fileId) {
+        const element = document.createElement('div');
+        element.className = 'message';
+
+        const label = document.createElement('div');
+        label.className = 'progress-label';
+        label.textContent = `📎 ${sender}: ${fileName} — 0%`;
+
+        const track = document.createElement('div');
+        track.className = 'progress-track';
+
+        const fill = document.createElement('div');
+        fill.className = 'progress-fill';
+
+        track.appendChild(fill);
+        element.append(label, track);
+        messages.appendChild(element);
+        messages.scrollTop = messages.scrollHeight;
+
+        const progressElement = { element, label, fill, sender, fileName };
+
+        sendingFiles.set(fileId, progressElement);
+
+        return progressElement;
+      }
+
+      function updateFileProgress(progressElement, percent) {
+        progressElement.fill.style.width = `${percent}%`;
+        progressElement.label.textContent = `📎 ${progressElement.sender}: ${progressElement.fileName} — ${percent}%`;
+      }
+
+      function finishFileProgress(progressElement, fileName, blob) {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        link.textContent = `📎 ${progressElement.sender}: ${fileName}`;
+        link.style.color = '#61dafb';
+
+        progressElement.element.replaceChildren(link);
       }
     </script>
   </body>
